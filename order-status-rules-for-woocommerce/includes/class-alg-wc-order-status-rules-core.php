@@ -2,10 +2,10 @@
 /**
  * Order Status Rules for WooCommerce - Core Class
  *
- * @version 3.9.1
+ * @version 3.9.5
  * @since   1.0.0
  *
- * @author  Algoritmika Ltd.
+ * @author  WPFactory
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -154,14 +154,26 @@ class Alg_WC_Order_Status_Rules_Core {
 	/**
 	 * get_statuses.
 	 *
-	 * @version 3.3.0
+	 * @version 3.9.4
 	 * @since   3.3.0
 	 */
 	function get_statuses() {
-		$statuses         = array();
-		$status_functions = get_option( 'alg_wc_order_status_rules_status_functions', array( 'wc_get_order_statuses' ) );
+		$statuses                 = array();
+		$status_functions         = get_option( 'alg_wc_order_status_rules_status_functions', array( 'wc_get_order_statuses' ) );
+		$allowed_status_functions = array_keys(
+			apply_filters(
+				'alg_wc_order_status_rules_status_functions',
+				array(
+					'wc_get_order_statuses'         => __( 'WooCommerce Order Statuses', 'order-status-rules-for-woocommerce' ),
+					'wcs_get_subscription_statuses' => __( 'WooCommerce Subscription Statuses', 'order-status-rules-for-woocommerce' ),
+				)
+			)
+		);
 		foreach ( $status_functions as $status_function ) {
-			if ( function_exists( $status_function ) ) {
+			if (
+				in_array( $status_function, $allowed_status_functions, true ) &&
+				function_exists( $status_function )
+			) {
 				$statuses = array_merge( $status_function(), $statuses );
 			}
 		}
@@ -227,7 +239,11 @@ class Alg_WC_Order_Status_Rules_Core {
 	 * @todo    (dev) maybe there is an easier way, e.g., use some existing action instead?
 	 */
 	function shop_order_screen() {
-		if ( function_exists( 'get_current_screen' ) && ( $current_screen = get_current_screen() ) && 'shop_order' === $current_screen->id ) {
+		if (
+			function_exists( 'get_current_screen' ) &&
+			( $current_screen = get_current_screen() ) &&
+			'shop_order' === $current_screen->id
+		) {
 			do_action( 'alg_wc_order_status_rules_shop_order_screen', get_the_ID() );
 		}
 	}
@@ -241,7 +257,11 @@ class Alg_WC_Order_Status_Rules_Core {
 	 * @todo    (dev) maybe there is an easier way, e.g., use some existing action instead?
 	 */
 	function shop_subscription_screen() {
-		if ( function_exists( 'get_current_screen' ) && ( $current_screen = get_current_screen() ) && 'shop_subscription' === $current_screen->id ) {
+		if (
+			function_exists( 'get_current_screen' ) &&
+			( $current_screen = get_current_screen() ) &&
+			'shop_subscription' === $current_screen->id
+		) {
 			do_action( 'alg_wc_order_status_rules_shop_subscription_screen', get_the_ID() );
 		}
 	}
@@ -262,20 +282,25 @@ class Alg_WC_Order_Status_Rules_Core {
 	/**
 	 * process_rules_url.
 	 *
-	 * @version 3.7.2
+	 * @version 3.9.3
 	 * @since   1.3.0
 	 *
-	 * @todo    (dev) optional "key" (for security)
 	 * @todo    (dev) optional "rule ID to process"
 	 * @todo    (dev) optional "order ID to process" (https://wordpress.org/support/topic/orderid-trigger/)
 	 */
 	function process_rules_url() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
 		if (
-			isset( $_REQUEST['alg_wc_order_status_rules_process_rules'] ) && // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			! is_admin()
+			! isset( $_GET['alg_wc_order_status_rules_process_rules'] ) ||
+			! isset( $_GET['secret'] ) ||
+			get_option( 'alg_wc_order_status_rules_url_secret', '' ) !== sanitize_text_field( wp_unslash( $_GET['secret'] ) ) ||
+			is_admin()
 		) {
-			$this->process_rules();
+			return;
 		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$this->process_rules();
 	}
 
 	/**
@@ -394,7 +419,7 @@ class Alg_WC_Order_Status_Rules_Core {
 	/**
 	 * init_options.
 	 *
-	 * @version 3.9.1
+	 * @version 3.9.5
 	 * @since   1.6.0
 	 *
 	 * @todo    (dev) call this only once, e.g., in constructor, or on `init` action
@@ -468,11 +493,37 @@ class Alg_WC_Order_Status_Rules_Core {
 	/**
 	 * filter_rule.
 	 *
-	 * @version 3.9.0
+	 * @version 3.9.5
 	 * @since   3.9.0
 	 */
 	function filter_rule( $value, $key ) {
-		return ( $key <= apply_filters( 'alg_wc_order_status_rules_rules_total', 1 ) );
+		return ( $key <= $this->rules_total() );
+	}
+
+	/**
+	 * rules_total.
+	 *
+	 * @version 3.9.5
+	 * @since   1.2.0
+	 */
+	function rules_total() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		if (
+			isset( $_REQUEST['page'], $_REQUEST['tab'], $_REQUEST['alg_wc_order_status_rules_total'] ) &&
+			'wc-settings' === $_REQUEST['page'] &&
+			'alg_wc_order_status_rules' === $_REQUEST['tab'] &&
+			! empty( $_REQUEST['alg_wc_order_status_rules_total'] ) &&
+			empty( $_REQUEST['section'] )
+		) {
+			// fixes the issue when "Total rules" option has just been changed
+			return (
+				! empty( $_REQUEST['alg_wc_order_status_rules__reset'] ) ?
+				1 :
+				intval( $_REQUEST['alg_wc_order_status_rules_total'] )
+			);
+		}
+		return get_option( 'alg_wc_order_status_rules_total', 1 );
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 	}
 
 	/**
@@ -688,7 +739,7 @@ class Alg_WC_Order_Status_Rules_Core {
 	/**
 	 * update_status.
 	 *
-	 * @version 3.3.0
+	 * @version 3.9.4
 	 * @since   3.3.0
 	 *
 	 * @todo    (dev) `remove_action`: check with `has_action()`?
@@ -697,14 +748,19 @@ class Alg_WC_Order_Status_Rules_Core {
 
 		$had_action = array();
 		foreach ( array( 'woocommerce_order_status_changed', 'woocommerce_subscription_status_changed' ) as $_hook ) {
-			$had_action[ $_hook ] = remove_action( $_hook, array( $this, 'process_rules_for_order' ) );
+			$priority = apply_filters( 'alg_wc_order_status_rules_hooks_priority', 10, $_hook );
+			$had_action[ $_hook ] = (
+				remove_action( $_hook, array( $this, 'process_rules_for_order' ), $priority ) ?
+				$priority :
+				false
+			);
 		}
 
 		$order->update_status( $new_status, $note );
 
-		foreach ( $had_action as $_hook => $_had_action ) {
-			if ( $_had_action ) {
-				add_action( $_hook, array( $this, 'process_rules_for_order' ) );
+		foreach ( $had_action as $_hook => $_priority ) {
+			if ( false !== $_priority ) {
+				add_action( $_hook, array( $this, 'process_rules_for_order' ), $_priority );
 			}
 		}
 

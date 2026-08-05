@@ -2,10 +2,10 @@
 /**
  * Order Status Rules for WooCommerce - Settings
  *
- * @version 3.8.0
+ * @version 3.9.5
  * @since   1.0.0
  *
- * @author  Algoritmika Ltd.
+ * @author  WPFactory
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -17,7 +17,7 @@ class Alg_WC_Settings_Order_Status_Rules extends WC_Settings_Page {
 	/**
 	 * Constructor.
 	 *
-	 * @version 3.8.0
+	 * @version 3.9.5
 	 * @since   1.0.0
 	 */
 	function __construct() {
@@ -28,22 +28,63 @@ class Alg_WC_Settings_Order_Status_Rules extends WC_Settings_Page {
 
 		// Sections
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-section.php';
+
+		// "General" section
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-general.php';
+
+		// "Rule" sections
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-rule.php';
-		for ( $rule_id = 1; $rule_id <= apply_filters( 'alg_wc_order_status_rules_rules_total', 1 ); $rule_id++ ) {
+		for ( $rule_id = 1; $rule_id <= alg_wc_order_status_rules()->core->rules_total(); $rule_id++ ) {
 			new Alg_WC_Order_Status_Rules_Settings_Rule( $rule_id );
 		}
+
+		// "Advanced" section
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-advanced.php';
+
+		// "Tools" section
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-tools.php';
+
+		// "My Account" section
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-my-account.php';
+
+		// "Extra" section
 		require_once plugin_dir_path( __FILE__ ) . 'class-alg-wc-order-status-rules-settings-extra.php';
 
+		// Scripts
+		add_action( 'admin_enqueue_scripts', array( $this, 'admin_scripts' ) );
+	}
+
+	/**
+	 * admin_scripts.
+	 *
+	 * @version 3.9.3
+	 * @since   1.8.1
+	 *
+	 * @todo    (v3.9.3) check `$_GET['section']` as well (`rule_X` or `advanced`)?
+	 */
+	function admin_scripts( $hook ) {
+		if (
+			'woocommerce_page_wc-settings' !== $hook ||
+			! isset( $_GET['tab'] ) || // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			'alg_wc_order_status_rules' !== sanitize_text_field( wp_unslash( $_GET['tab'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		) {
+			return;
+		}
+
+		$min_suffix = ( defined( 'WP_DEBUG' ) && true === WP_DEBUG ? '' : '.min' );
+		wp_enqueue_script(
+			'alg-wc-order-status-rules-admin',
+			alg_wc_order_status_rules()->plugin_url() . '/assets/js/alg-wc-order-status-rules-admin' . $min_suffix . '.js',
+			array( 'jquery' ),
+			alg_wc_order_status_rules()->version,
+			true
+		);
 	}
 
 	/**
 	 * get_settings.
 	 *
-	 * @version 3.5.4
+	 * @version 3.9.5
 	 * @since   1.0.0
 	 */
 	function get_settings() {
@@ -105,7 +146,7 @@ class Alg_WC_Settings_Order_Status_Rules extends WC_Settings_Page {
 	/**
 	 * get_copy_rules_options.
 	 *
-	 * @version 3.5.4
+	 * @version 3.9.5
 	 * @since   3.5.4
 	 */
 	function get_copy_rules_options() {
@@ -116,7 +157,7 @@ class Alg_WC_Settings_Order_Status_Rules extends WC_Settings_Page {
 		}
 
 		$copy_rules = array( '' => __( 'Select a rule&hellip;', 'order-status-rules-for-woocommerce' ) );
-		for ( $rule_id = 1; $rule_id <= apply_filters( 'alg_wc_order_status_rules_rules_total', 1 ); $rule_id++ ) {
+		for ( $rule_id = 1; $rule_id <= alg_wc_order_status_rules()->core->rules_total(); $rule_id++ ) {
 			$copy_rules[ 'rule_' . $rule_id ] = strtoupper(
 				sprintf(
 					/* Translators: %d: Rule ID. */
